@@ -26,3 +26,16 @@
 
 - Zigbee cleanup in progress
 - Reorganizing devices and dashboard
+
+## Current progress
+
+### Completed
+- Home Assistant updated
+- Static IP configured
+- Tailscale remote access tested
+- Google Drive Backup verified
+- Zigbee cleanup started
+
+### Planned
+- Dashboard cleanup
+- SSD/NVMe migration
