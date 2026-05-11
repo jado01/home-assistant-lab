@@ -2,9 +2,15 @@
 
 ## Hardware
 
-- Raspberry Pi 5
-- Zigbee coordinator
-- SSD/NVMe migration planned
+- Raspberry Pi 5 (8GB RAM)
+- Home Assistant running on SanDisk Extreme microSDXC 64GB
+  - A2 / U3 / V30
+  - Read speed up to 170 MB/s
+  - Write speed up to 80 MB/s
+- ZBT-1 Zigbee USB coordinator
+  - Home Assistant Connect ZBT-1
+  - (previously known as Home Assistant SkyConnect)
+ - SSD/NVMe migration planned
 
 ## Home Assistant
 
