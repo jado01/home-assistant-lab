@@ -5,3 +5,7 @@
 - Renamed sensors for better readability
 - Simplified dashboard layout
 - Added active sensors and smart plugs
+- Reorganized smart plugs into correct rooms
+- Renamed smart plugs
+- Updated dashboard cards with new entity names
+-  
