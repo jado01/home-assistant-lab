@@ -12,11 +12,11 @@ Created a smart WC lighting automation using two MOES Zigbee GU10 bulbs and a PI
 
 ### Lighting modes
 
-| Mode | Time | Brightness | Color temperature |
+| Mode | Time | Brightness | Color temperature | Kelvin |
 |---|---|---:|---|
-| Night | 22:00 - 06:00 | 5% | Warm white |
-| Evening | 18:00 - 22:00 | 25% | Warm white |
-| Day | 06:00 - 18:00 | 40% | Neutral white |
+| Night | 22:00 - 06:00 | 1% | Warm white | 2000 |
+| Evening | 18:00 - 22:00 | 3% | Warm white | 2500 |
+| Day | 06:00 - 18:00 | 30% | Neutral white | 4000 |
 
 ### Automation logic
 
