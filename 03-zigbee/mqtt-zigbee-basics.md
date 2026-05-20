@@ -169,9 +169,11 @@ The actual message/data content.
 
 Example:
 
+```json
 {
   "occupancy": true
 }
+```
 
 ## Retain
 
@@ -212,6 +214,7 @@ Home Assistant automatically creates:
 # Communication Flow
 ## Complete communication flow in my setup
 
+```text
 PIR Sensor
 ↓ Zigbee
 Sonoff ZBT-1 Coordinator
@@ -225,7 +228,7 @@ Home Assistant
 Automation
 ↓
 Light ON
-
+```
 # Installed Home Assistant Addons
 ## Mosquitto Broker
 MQTT server/broker.
