@@ -1,165 +1,166 @@
-# Home Assistant + RPi3 Timelapse
-## Diagnostika problému, recovery fotografií a návrh Timelapse v2
+# Timelapse Backup - Troubleshooting
 
-**Dátum riešenia:** 12. 9. 2026
+## Incident: Home Assistant network storage failure
 
----
+**Date:** 2026-09-12
 
-## 1. Pôvodný systém
+Home Assistant creates a balcony camera snapshot every 15 minutes.
 
-Home Assistant vytvára každých 15 minút fotografiu z balkónovej kamery a ukladá ju cez sieť na SSD pripojené k Raspberry Pi 3.
+Originally, the snapshots were written directly to an SSD connected to an RPi3 server through Samba network storage.
 
-Network storage v Home Assistante:
+Home Assistant network storage configuration:
 
-- názov: `linux_server_ssd`
-- server: `192.168.1.149`
-- Samba share: `storage`
+```text
+Name: linux_server_ssd
+Server: 192.168.1.149
+Share: storage
+```
 
-RPi3 používa externé SSD:
+RPi3 storage:
 
 ```text
 /dev/sda1
 ```
 
-mountnuté na:
+mounted at:
 
 ```text
 /media/storage
 ```
 
-Fotografie sú uložené v:
+The camera images are stored under:
 
 ```text
 timelapse/balcony/
 ```
 
-Na RPi3 sa pripájam cez SSH alias:
+The RPi3 server can be accessed using:
 
 ```bash
 ssh server-home
 ```
 
-Server je možné bezpečne vypnúť cez Home Assistant. Po shutdown RPi3 HA približne po 3 minútach vypne smart zásuvku, z ktorej je server napájaný.
-
 ---
 
-# 2. Problém
+## Problem
 
-RPi3 bol raz vypnutý a neskôr znovu zapnutý.
+The RPi3 had previously been safely shut down from Home Assistant.
 
-Po zapnutí nebolo skontrolované, či sa Home Assistant opäť pripojil k sieťovému úložisku.
+After shutdown, the smart plug powering the server was switched off.
 
-Po čase sa zistilo, že na RPi3 nepribúdajú nové fotografie.
+The server was later powered on again, but the Home Assistant network storage mount was not checked afterward.
 
-Home Assistant zobrazoval:
+Later, Home Assistant reported:
 
 ```text
 Network storage device failed
 ```
 
-a:
+and:
 
 ```text
 Could not set up linux_server_ssd
 ```
 
+At the same time, new camera snapshots were no longer appearing on the RPi3 SSD.
+
 ---
 
-# 3. Diagnostický postup
+## Troubleshooting approach
 
-Cieľom nebolo náhodne reštartovať zariadenia, ale postupne kontrolovať jednotlivé vrstvy:
+The system was checked layer by layer:
 
 ```text
 SSD
  ↓
 Linux mount
  ↓
-Samba služba
+Samba service
  ↓
 Samba share
  ↓
-sieť
+network
  ↓
 Home Assistant network mount
  ↓
-HA automatizácia
+automation
  ↓
-kamera
+camera
 ```
 
-Týmto spôsobom sa dá presne určiť, na ktorej vrstve problém vznikol.
+The goal was to determine exactly where the failure occurred instead of randomly restarting devices and services.
 
 ---
 
-# 4. SSH pripojenie na RPi3
+## 1. SSH connection to RPi3
 
-Použitý SSH alias:
+Command:
 
 ```bash
 ssh server-home
 ```
 
-Pripojenie funguje pomocou existujúcej SSH konfigurácie/kľúča.
+SSH connection worked correctly.
 
 ---
 
-# 5. Kontrola SSD
+## 2. Check storage devices
 
-Príkaz:
+Command:
 
 ```bash
 lsblk
 ```
 
-Výsledok:
+Relevant result:
 
 ```text
 sda
 └─sda1  931.5G  /media/storage
 ```
 
-Záver:
+Conclusion:
 
-- RPi3 vidí SSD
-- partícia `sda1` existuje
-- filesystem je mountnutý
-- mount point je `/media/storage`
+- RPi3 sees the SSD
+- partition exists
+- filesystem is mounted
+- mount point is `/media/storage`
 
-SSD teda nebolo príčinou problému.
+The SSD was not the cause of the problem.
 
 ---
 
-# 6. Kontrola Samba služby
+## 3. Check Samba service
 
-Príkaz:
+Command:
 
 ```bash
 systemctl status smbd
 ```
 
-Výsledok:
+Result:
 
 ```text
 active (running)
 ```
 
-Samba teda bežala.
+Samba was running correctly.
 
-Dôležitá poznámka:
+Important note:
 
-Bežiaca Samba ešte automaticky neznamená, že konkrétny share je správne nakonfigurovaný.
+A running Samba service does not automatically mean that a specific share is configured correctly.
 
 ---
 
-# 7. Kontrola Samba share
+## 4. Check Samba configuration
 
-Príkaz:
+Command:
 
 ```bash
 testparm -s
 ```
 
-Relevantná konfigurácia:
+Relevant configuration:
 
 ```text
 [storage]
@@ -168,33 +169,31 @@ Relevantná konfigurácia:
     valid users = jan
 ```
 
-Teda Samba share:
+The Samba share:
 
 ```text
 storage
 ```
 
-správne smeruje na:
+correctly points to:
 
 ```text
 /media/storage
 ```
 
-a používateľ `jan` má povolený zápis.
-
 ---
 
-# 8. Kontrola Samby z Windows
+## 5. Test Samba from Windows
 
-V Prieskumníkovi Windows:
+The share was opened from Windows Explorer:
 
 ```text
 \\192.168.1.149\storage
 ```
 
-Share bol dostupný a bolo možné prezerať existujúce fotografie.
+Existing files were visible and accessible.
 
-V tomto bode bolo potvrdené:
+At this point the following components were confirmed working:
 
 ```text
 RPi3              OK
@@ -205,28 +204,26 @@ Samba share       OK
 LAN               OK
 ```
 
-Problém teda nebol na strane RPi3.
+This narrowed the problem down to Home Assistant.
 
 ---
 
-# 9. Kontrola Home Assistant network mountu
+## 6. Home Assistant network storage reload
 
-V:
+In Home Assistant:
 
 ```text
 Settings → System → Storage
 ```
 
-bolo viditeľné:
+the storage entry existed:
 
 ```text
 linux_server_ssd
 192.168.1.149:storage
 ```
 
-Network storage však bolo v chybovom stave.
-
-Po použití Reload Home Assistant oznámil:
+After using Reload, Home Assistant reported:
 
 ```text
 Cannot mount linux_server_ssd because there is existing data at
@@ -234,126 +231,128 @@ Cannot mount linux_server_ssd because there is existing data at
 Move it away first, then retry.
 ```
 
-Toto bola kľúčová informácia.
+This revealed the actual problem.
 
 ---
 
-# 10. Skutočná príčina problému
+## Root cause
 
-Keď bolo RPi3 vypnuté, Samba share nebol dostupný.
+While the RPi3 was powered off, the Samba network share was unavailable.
 
-Home Assistant však ďalej každých 15 minút spúšťal automatizáciu kamery.
+The camera automation continued creating snapshots every 15 minutes.
 
-Pravdepodobný priebeh:
+Instead of failing completely, Home Assistant started writing the images locally into the mount point.
+
+Likely sequence:
 
 ```text
 RPi3 OFF
    ↓
-network storage zmizne
+network storage unavailable
    ↓
-HA automatizácia ďalej fotografuje
+camera automation continues
    ↓
-fotografie sa začnú zapisovať lokálne
+snapshots are written locally
    ↓
-lokálne súbory vzniknú v mount pointe
+local files appear in mount point
    ↓
-RPi3 sa neskôr zapne
+RPi3 is powered on later
    ↓
-HA chce znovu mountnúť Samba share
+HA tries to mount Samba share again
    ↓
-mount point už obsahuje lokálne dáta
+mount point already contains local data
    ↓
-HA odmietne mount
+HA refuses to mount over existing files
 ```
 
-Home Assistant tým chránil lokálne súbory pred prekrytím network mountom.
+Home Assistant was protecting the local files from being hidden by the network mount.
 
 ---
 
-# 11. Home Assistant Terminal a kontajnery
+## 7. Home Assistant Terminal and container paths
 
-Používaný Terminal & SSH add-on:
+Home Assistant Terminal & SSH add-on prompt:
 
 ```text
 [core-ssh ~]$
 ```
 
-Pokus:
+Attempting:
 
 ```bash
 ls -lah /data/media/linux_server_ssd
 ```
 
-vrátil:
+returned:
 
 ```text
 No such file or directory
 ```
 
-To neznamenalo, že cesta Supervisora neexistuje.
+This did not mean the Supervisor path did not exist.
 
-`core-ssh` beží vo vlastnom kontajneri/prostredí a nevidí hostiteľský filesystem rovnakými cestami.
+The Terminal add-on runs in its own container/environment and does not see all host filesystem paths in the same way.
 
-V Terminal add-one však fungovalo:
+The path visible from the Terminal add-on was:
 
 ```bash
 ls -lah /media
 ```
 
-kde bolo:
+where:
 
 ```text
 linux_server_ssd
 ```
 
-Poučenie:
+was visible.
 
-Rôzne komponenty Home Assistant OS môžu mať rozdielny pohľad na filesystem.
+Important lesson:
+
+```text
+Different Home Assistant OS components can see the filesystem differently.
+```
 
 ---
 
-# 12. Recovery lokálnych dát
+## 8. Recover blocking local data
 
-Home Assistant Repair ponúkol:
+Home Assistant Repair offered:
 
 ```text
 Move blocking local data away
 ```
 
-Pred potvrdením HA oznámil:
+Home Assistant confirmed that no files would be deleted.
 
-```text
-No files are deleted.
-```
-
-Lokálne dáta mali byť presunuté do:
+The local data was moved to:
 
 ```text
 linux_server_ssd_local_recovery
 ```
 
-Po potvrdení vzniklo:
+After recovery, the following path existed:
 
 ```text
 /media/linux_server_ssd_local_recovery/
 └── timelapse/
     └── balcony/
-        └── fotografie
+        └── snapshots
 ```
 
-Zároveň sa:
+At the same time:
 
 ```text
 /media/linux_server_ssd
 ```
 
-opäť stal skutočným network mountom smerujúcim na SSD RPi3.
+became the real Samba network mount again.
 
 ---
 
-# 13. Overenie časovej osi fotografií
+## 9. Verify timeline continuity
 
-Posledné fotografie na RPi3 pred výpadkom:
+Last snapshots on RPi3 before the failure:
 
 ```text
 2026-07-29 16:15
@@ -361,25 +360,25 @@ Posledné fotografie na RPi3 pred výpadkom:
 2026-07-29 16:45
 ```
 
-Najstaršia fotografia v recovery:
+First recovery snapshot:
 
 ```text
 2026-07-29 17:00
 ```
 
-Recovery pokračovalo až po:
+Last recovery snapshot:
 
 ```text
 2026-09-12 12:45
 ```
 
-Po oprave network mountu sa na RPi3 objavila:
+First new snapshot written to RPi3 after repair:
 
 ```text
 2026-09-12 13:00
 ```
 
-Časová os:
+Timeline:
 
 ```text
 RPi3                         RECOVERY                         RPi3
@@ -387,22 +386,22 @@ RPi3                         RECOVERY                         RPi3
 16:15 → 16:30 → 16:45 → 17:00 → ... → 12:30 → 12:45 → 13:00
 ```
 
-Interval presne 15 minút.
+The 15-minute interval was continuous.
 
-Záver:
+Conclusion:
 
-Automatizácia ani kamera neprestali fungovať.
+The camera and automation had been working the whole time.
 
-Fotografie sa celý čas vytvárali, iba sa počas nedostupnosti RPi3 ukladali lokálne do Home Assistanta.
+Only the destination storage changed.
 
 ---
 
-# 14. Počítanie súborov
+## 10. Count files
 
-Všeobecný príkaz:
+General command:
 
 ```bash
-find /cesta/k/adresaru -type f | wc -l
+find /path/to/folder -type f | wc -l
 ```
 
 Recovery:
@@ -411,59 +410,67 @@ Recovery:
 find /media/linux_server_ssd_local_recovery/timelapse/balcony -type f | wc -l
 ```
 
-Výsledok:
+Result:
 
 ```text
 4303
 ```
 
-Na RPi3 bolo pred prenesením recovery približne:
+Before recovery copy, the RPi3 contained approximately:
 
 ```text
 1029
 ```
 
+files.
+
 ---
 
-# 15. Zobrazenie najnovších súborov
+## 11. Show newest files
+
+Command:
 
 ```bash
-ls -lt /cesta | head -5
+ls -lt /path | head -5
 ```
 
-Význam:
+Meaning:
 
 ```text
--l = detailný výpis
--t = zoradiť podľa času
-head -5 = ukázať prvých 5 riadkov
+-l = detailed listing
+-t = sort by modification time
+head -5 = show first 5 lines
 ```
 
 ---
 
-# 16. Zobrazenie najstarších súborov
+## 12. Show oldest files
+
+Command:
 
 ```bash
-ls -ltr /cesta | head -5
+ls -ltr /path | head -5
 ```
 
-`-r` obráti poradie.
+`-r` reverses the sorting order.
 
 ---
 
-# 17. Veľkosť adresára
+## 13. Check directory size
+
+Command:
 
 ```bash
-du -sh /cesta
+du -sh /path
 ```
 
-Recovery malo približne:
+Recovery size:
 
 ```text
 360M
 ```
 
-Celý timelapse na RPi3 po prenose:
+Full timelapse directory on RPi3 after recovery:
 
 ```text
 462M
@@ -471,151 +478,141 @@ Celý timelapse na RPi3 po prenose:
 
 ---
 
-# 18. Kopírovanie recovery na RPi3
+## 14. Copy recovery files to RPi3
 
-Fotografie boli najprv kopírované, nie presúvané.
+The recovery files were copied instead of moved.
 
-Dôvod:
+Reason:
 
-Ak by prenos zlyhal, recovery stále zostane zachované.
+The recovery directory should remain intact until the transfer is verified.
 
-Príkaz:
+Command:
 
 ```bash
 cp -av /media/linux_server_ssd_local_recovery/timelapse/balcony/. /media/linux_server_ssd/timelapse/balcony/
 ```
 
-Význam:
+Meaning:
 
 ```text
 cp = copy
--a  = archive, zachovanie metadát/časov
--v  = verbose, vypisovanie kopírovaných súborov
+-a  = archive mode, preserve metadata
+-v  = verbose output
 ```
 
-`/.` na konci zdrojovej cesty znamená obsah daného adresára.
+The `/.` at the end means:
+
+```text
+copy the contents of this directory
+```
 
 ---
 
-# 19. Znak \ v shell príkazoch
+## 15. Shell line continuation
 
-Ak je dlhý príkaz rozdelený na viac riadkov:
+A backslash at the end of a shell line:
 
 ```bash
-prikaz \
-dalsia_cast
+command \
+next-part
 ```
 
-znak:
+means:
 
 ```text
-\
+the command continues on the next line
 ```
 
-na konci riadku znamená:
-
-```text
-príkaz pokračuje na ďalšom riadku
-```
-
-Nie je súčasťou cesty.
+It is not part of the path.
 
 ---
 
-# 20. Kontrola prenesených súborov
+## 16. File counts after copy
 
-Po kopírovaní:
+After copying:
 
 ```text
 Recovery: 4303
 RPi3:     5343
 ```
 
-RPi3 obsahovalo:
+The RPi3 count was larger because it contained:
 
-- pôvodné fotografie
-- 4303 recovery fotografií
-- nové fotografie vzniknuté po oprave
-
-Preto bol počet vyšší.
+- old snapshots
+- 4303 recovered snapshots
+- new snapshots created after repair
 
 ---
 
-# 21. BusyBox find
+## 17. BusyBox find limitation
 
-Pôvodne bol skúšaný príkaz s:
+The Home Assistant Terminal uses BusyBox utilities.
+
+The following option was not supported:
 
 ```text
 find -printf
 ```
 
-HA Terminal však používa BusyBox `find`, ktorý parameter:
-
-```text
--printf
-```
-
-nepodporuje.
-
-Chyba:
+Error:
 
 ```text
 find: unrecognized: -printf
 ```
 
-Poučenie:
+Important lesson:
 
-Nie všetky Linux utility majú na každom systéme rovnaké možnosti.
+Not all Linux command implementations support the same options.
 
 ---
 
-# 22. Porovnanie názvov recovery a serverových fotografií
+## 18. Compare recovery files with server files
 
-Najprv sa vytvoril zoznam recovery fotografií:
+Create a list of recovery filenames:
 
 ```bash
 find /media/linux_server_ssd_local_recovery/timelapse/balcony -type f | sed 's#.*/##' | sort > /tmp/recovery.txt
 ```
 
-Potom zoznam fotografií na serveri:
+Create a list of server filenames:
 
 ```bash
 find /media/linux_server_ssd/timelapse/balcony -type f | sed 's#.*/##' | sort > /tmp/server.txt
 ```
 
-Porovnanie:
+Compare them:
 
 ```bash
 comm -23 /tmp/recovery.txt /tmp/server.txt
 ```
 
-Príkaz nevypísal nič.
+The command produced no output.
 
-To znamená:
+Meaning:
 
 ```text
-Každý názov súboru z recovery existuje aj na RPi3.
+Every recovery filename also exists on the RPi3 server.
 ```
 
-Prenos 4303 recovery fotografií bol teda úspešný.
+This confirmed that all 4303 recovery files had been transferred successfully.
 
 ---
 
-# 23. Odstránenie recovery
+## 19. Remove recovery directory
 
-Pred odstránením bola overená cesta:
+Before deletion, verify the path:
 
 ```bash
 ls -ld /media/linux_server_ssd_local_recovery
 ```
 
-Až potom:
+Then remove it:
 
 ```bash
 rm -rf /media/linux_server_ssd_local_recovery
 ```
 
-Význam:
+Meaning:
 
 ```text
 rm = remove
@@ -623,519 +620,75 @@ rm = remove
 -f = force
 ```
 
-Teda:
+Important:
 
 ```text
-odstráň adresár a celý jeho obsah bez ďalšieho potvrdenia
+Always verify the full path before using rm -rf.
 ```
 
-DÔLEŽITÉ:
-
-Pri použití:
-
-```bash
-rm -rf
-```
-
-vždy pred stlačením Enter skontrolovať celú cestu.
-
-Nie je to Windows Kôš a príkaz sa nepýta na potvrdenie.
+This command does not move files to a recycle bin and normally does not ask for confirmation.
 
 ---
 
-# 24. Kontrola po odstránení recovery
+## 20. Verify cleanup
+
+Command:
 
 ```bash
 ls -lah /media
 ```
 
-Výsledok obsahoval už iba:
+The recovery directory was gone and only the active network storage remained:
 
 ```text
 linux_server_ssd
 ```
 
-Recovery bolo odstránené.
-
 ---
 
-# 25. Konečný stav po oprave
+## Final state
+
+After repair:
 
 ```text
 RPi3                 OK
 SSD                  OK
 Samba                OK
 Network storage HA   OK
-Automatizácia        OK
-Nové fotografie      OK
-4303 recovery fotiek prenesených
-Recovery             odstránené
+Automation           OK
+New snapshots        OK
+4303 recovery files  transferred
+Recovery             removed
 ```
 
 ---
 
-# 26. Hlavná lekcia z diagnostiky
+## Main lesson
 
-Pri podobnom probléme neísť hneď cestou:
-
-```text
-reštartuj všetko
-```
-
-ale rozdeliť systém na vrstvy:
+The most useful troubleshooting approach was to check the system layer by layer:
 
 ```text
 hardware
  ↓
 filesystem
  ↓
-služba
+service
  ↓
-sieť
+network
  ↓
 mount
  ↓
-aplikácia
+application
  ↓
-automatizácia
+automation
 ```
 
-a postupne dokazovať:
+Instead of restarting everything, verify each layer and identify the first one that fails.
+
+This incident directly led to the redesign described in:
 
 ```text
-toto funguje
-toto funguje
-toto funguje
-TOTO NEFUNGUJE
+README.md
 ```
 
-Tak sa problém výrazne zúži.
-
----
-
-# TIMELAPSE V2
-
-Počas diagnostiky vznikol nápad prerobiť celý systém.
-
-Cieľ:
-
-RPi3 nemusí bežať 24/7 iba kvôli archivácii fotografií.
-
----
-
-# 27. Súčasná architektúra
-
-```text
-kamera
-  ↓
-Home Assistant
-  ↓
-network mount
-  ↓
-RPi3
-  ↓
-SSD
-```
-
-Nevýhoda:
-
-Ak RPi3 nie je dostupné, vznikajú problémy s network mountom.
-
----
-
-# 28. Nová architektúra
-
-```text
-KAMERA
-   ↓
-HOME ASSISTANT
-   ↓
-LOKÁLNY BUFFER
-   ↓
-fotografie každých 15 minút
-   ↓
-RPi3 môže byť OFF
-   ↓
-periodická synchronizácia
-   ↓
-RPi3 SSD
-   ↓
-dlhodobý archív
-```
-
-Home Assistant teda bude vždy fotografovať lokálne.
-
-RPi3 bude iba archívny server.
-
----
-
-# 29. Množstvo dát
-
-Fotografia každých 15 minút:
-
-```text
-4 fotografie / hodina
-96 fotografií / deň
-672 fotografií / týždeň
-```
-
-Pri približne 100 kB na fotografiu:
-
-```text
-cca 67 MB / týždeň
-```
-
-Týždenný lokálny buffer je teda úplne rozumný.
-
----
-
-# 30. Automatická týždenná synchronizácia
-
-Napríklad sobota v noci:
-
-```text
-HA zapne smart zásuvku
-        ↓
-RPi3 začne bootovať
-        ↓
-HA čaká, kým je server SKUTOČNE online
-        ↓
-overí dostupnosť servera
-        ↓
-spustí synchronizáciu
-        ↓
-overí úspešnosť synchronizácie
-        ↓
-bezpečný Linux shutdown
-        ↓
-počká približne 3 minúty
-        ↓
-vypne smart zásuvku
-```
-
-Nechceme iba:
-
-```text
-zapni
-počkaj 60 sekúnd
-kopíruj
-```
-
-Lepšie je:
-
-```text
-zapni
- ↓
-overuj dostupnosť
- ↓
-server naozaj online
- ↓
-pokračuj
-```
-
----
-
-# 31. Synchronizácia pri manuálnom zapnutí
-
-Ak RPi3 zapnem sám:
-
-```text
-MANUAL power ON
-      ↓
-RPi3 boot
-      ↓
-HA zistí server online
-      ↓
-existujú nové fotografie?
-      ↓
-ÁNO
-      ↓
-synchronizácia
-      ↓
-server zostáva zapnutý
-```
-
-HA server po synchronizácii nesmie vypnúť, pretože na ňom môžem práve pracovať.
-
----
-
-# 32. AUTO vs MANUAL session
-
-Systém musí vedieť, prečo bol server zapnutý.
-
-```text
-AUTO
-```
-
-znamená:
-
-```text
-server zapla automatizácia kvôli synchronizácii
-```
-
-Po úspešnom prenose ho môže vypnúť.
-
-```text
-MANUAL
-```
-
-znamená:
-
-```text
-server zapol používateľ
-```
-
-Synchronizácia môže prebehnúť, ale server zostane zapnutý.
-
----
-
-# 33. Lock
-
-Lock znamená:
-
-```text
-zámok
-```
-
-V našom prípade:
-
-```text
-práve prebieha synchronizácia
-```
-
-Napríklad HA helper:
-
-```text
-input_boolean.timelapse_sync_running
-```
-
-Stavy:
-
-```text
-OFF = synchronizácia neprebieha
-ON  = synchronizácia práve prebieha
-```
-
----
-
-# 34. Ochrana shutdownu počas synchronizácie
-
-Situácia:
-
-```text
-15:30:00 začne synchronizácia
-15:30:10 používateľ stlačí Vypnúť server
-15:30:20 synchronizácia stále beží
-```
-
-Server sa nesmie okamžite vypnúť.
-
-Logika:
-
-```text
-Používateľ chce shutdown
-          ↓
-sync_running?
-     ↙         ↘
-   NIE         ÁNO
-    ↓           ↓
-shutdown    zapamätaj požiadavku
-                ↓
-         počkaj na koniec sync
-                ↓
-           sync úspešný?
-                ↓
-             shutdown
-```
-
----
-
-# 35. Ochrana používateľa pred automatickým shutdownom
-
-Ak server zapol používateľ:
-
-```text
-MANUAL session
-```
-
-automatizácia môže fotografie synchronizovať, ale nesmie server vypnúť.
-
-Tým sa zabráni situácii:
-
-```text
-používateľ pracuje cez SSH
-        ↓
-sync skončí
-        ↓
-automatizácia vypne server
-        ↓
-SSH connection closed
-```
-
----
-
-# 36. rsync
-
-Pre Timelapse v2 bude vhodnejší:
-
-```bash
-rsync
-```
-
-než jednoduché:
-
-```bash
-cp
-```
-
-alebo:
-
-```bash
-mv
-```
-
-`rsync` je určený na synchronizáciu súborov a umožní vytvoriť bezpečnejší proces.
-
-Zásada:
-
-```text
-zdrojové fotografie neodstraňovať,
-kým nie je potvrdený úspešný prenos
-```
-
----
-
-# 37. Mobilné notifikácie
-
-Po automatickom cykle:
-
-```text
-📷 Timelapse backup dokončený
-
-672 fotografií prenesených.
-RPi3 bezpečne vypnuté.
-Smart zásuvka vypnutá.
-```
-
-Pri manuálnom zapnutí:
-
-```text
-📷 Timelapse synchronizovaný
-
-192 fotografií prenesených.
-Server zostáva zapnutý – manuálne spustenie.
-```
-
-Pri chybe:
-
-```text
-⚠️ Timelapse backup zlyhal
-
-Synchronizácia nebola úspešná.
-Zdrojové fotografie zostali zachované.
-Server nebol automaticky vypnutý.
-```
-
----
-
-# 38. Logging
-
-Systém bude viesť log.
-
-Príklad:
-
-```text
-2026-09-12 03:00 | AUTO   | Server power ON
-2026-09-12 03:01 | AUTO   | Server online
-2026-09-12 03:01 | SYNC   | 672 files found
-2026-09-12 03:03 | SYNC   | 672 files transferred successfully
-2026-09-12 03:03 | AUTO   | Shutdown successful
-2026-09-12 03:06 | AUTO   | Power OFF
-
-2026-09-14 15:30 | MANUAL | Server power ON
-2026-09-14 15:31 | SYNC   | 192 files transferred successfully
-2026-09-14 15:32 | MANUAL | Server remains ON
-```
-
-Log umožní spätne zistiť:
-
-- kedy bol server zapnutý
-- či bol AUTO alebo MANUAL
-- koľko fotografií bolo prenesených
-- či synchronizácia uspela
-- či prebehol shutdown
-- či bola vypnutá zásuvka
-- prípadné chyby
-
----
-
-# 39. Plán implementácie Timelapse v2
-
-Projekt nebudeme vytvárať celý naraz.
-
-Postup:
-
-```text
-1. lokálny buffer fotografií
-        ↓
-2. overenie lokálneho fotografovania
-        ↓
-3. ručná synchronizácia na RPi3
-        ↓
-4. rsync
-        ↓
-5. automatický sync pri zapnutí RPi3
-        ↓
-6. týždenné automatické zapnutie servera
-        ↓
-7. rozlíšenie AUTO / MANUAL
-        ↓
-8. bezpečný shutdown
-        ↓
-9. lock / ochrana synchronizácie
-        ↓
-10. mobilné notifikácie
-        ↓
-11. logging
-```
-
-Každú vrstvu najprv samostatne pochopiť a otestovať.
-
-Až potom ju spojiť s ďalšou.
-
----
-
-# Cieľ projektu
-
-Výsledkom nemá byť iba automatizácia, ktorá nejako funguje.
-
-Cieľom je vytvoriť systém, pri ktorom rozumiem:
-
-```text
-čo robí
-prečo to robí
-kde sú uložené dáta
-ako prebieha synchronizácia
-ako sa zisťuje stav servera
-ako sa server bezpečne vypína
-ako sa systém chráni pred chybami
-ako ho diagnostikovať
-```
-
-Projekt tak slúži zároveň ako praktické učenie:
-
-- Home Assistant
-- Linux
-- SSH
-- filesystem
-- mount
-- Samba
-- sieťové úložisko
-- rsync
-- automatizácie
-- stavová logika
-- lock
-- bezpečný shutdown
-- notifikácie
-- logging
-- troubleshooting
+where Timelapse v2 uses a local Home Assistant buffer and periodic synchronization instead of continuous direct writing to network storage.
